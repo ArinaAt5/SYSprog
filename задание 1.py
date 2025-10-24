@@ -3,6 +3,13 @@ import time
 import queue
 from typing import List, Tuple
 
+def calculate_sum_of_squares(start: int, end: int) -> int:
+    total = 0
+    for i in range(start, end + 1):
+        total += i * i
+    return total
+
+
 def worker(input_queue: multiprocessing.Queue, output_queue: multiprocessing.Queue):
     while True:
         try:
@@ -11,9 +18,7 @@ def worker(input_queue: multiprocessing.Queue, output_queue: multiprocessing.Que
                 break
 
             start, end, worker_id = task
-            total = 0
-            for i in range(start, end + 1):
-                total += i * i
+            total = calculate_sum_of_squares(start, end)
 
             output_queue.put((worker_id, total))
 
@@ -21,6 +26,7 @@ def worker(input_queue: multiprocessing.Queue, output_queue: multiprocessing.Que
             continue
 
 def parallel_sum_of_squares_queues(start: int, end: int, num_processes: int = None) -> int:
+
     if num_processes is None:
         num_processes = multiprocessing.cpu_count()
 
@@ -31,14 +37,13 @@ def parallel_sum_of_squares_queues(start: int, end: int, num_processes: int = No
     input_queue = multiprocessing.Queue()
     output_queue = multiprocessing.Queue()
 
-    # Создаем и запускаем процессы
     processes = []
     for i in range(num_processes):
         p = multiprocessing.Process(target=worker, args=(input_queue, output_queue))
         p.start()
         processes.append(p)
 
-    ranges = []
+    # Разбиваем диапазон и отправляем задания
     for i in range(num_processes):
         chunk_start = start + i * chunk_size
         chunk_end = start + (i + 1) * chunk_size - 1
@@ -46,9 +51,10 @@ def parallel_sum_of_squares_queues(start: int, end: int, num_processes: int = No
         if i == num_processes - 1:
             chunk_end = end
 
+        # Отправляем задание в очередь (добавляем worker_id для идентификации)
         input_queue.put((chunk_start, chunk_end, i))
-        ranges.append((chunk_start, chunk_end))
 
+    # Отправляем сигналы завершения для каждого процесса
     for _ in range(num_processes):
         input_queue.put(None)
 
@@ -76,13 +82,20 @@ def parallel_sum_of_squares_queues(start: int, end: int, num_processes: int = No
     return total_sum
 
 if __name__ == "__main__":
-    N = 1000
+    N = 10000000
     print(f"Вычисление суммы квадратов первых {N} натуральных чисел...")
 
     # Многопроцессорный подход с очередями
     start_time = time.time()
-    parallel_result = parallel_sum_of_squares_queues(1, N)
+    parallel_result = parallel_sum_of_squares_queues(1, N, 4)
     parallel_time = time.time() - start_time
 
+    # Последовательный подход для сравнения
+    start_time = time.time()
+    sequential_result = calculate_sum_of_squares(1, N)
+    sequential_time = time.time() - start_time
+
     print(f"Результат (очереди): {parallel_result}")
-    print(f"Многопроцессорное время (очереди): {parallel_time} сек")
+    print(f"Результат (последовательно): {sequential_result}")
+    print(f"Многопроцессорное время (очереди): {parallel_time:.4f} сек")
+    print(f"Последовательное время: {sequential_time:.4f} сек")
