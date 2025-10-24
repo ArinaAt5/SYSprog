@@ -1,6 +1,6 @@
 import multiprocessing
-import math
 import time
+import queue
 
 def factorial(n):
     result = 1
@@ -8,26 +8,66 @@ def factorial(n):
         result *= i
     return result
 
-def calculate_factorials_parallel(numbers):
-    with multiprocessing.Pool() as pool:
-        results = pool.map(factorial, numbers)
+def worker(input_queue, output_queue):
+    while True:
+        try:
+            task = input_queue.get(timeout=1)
+            if task is None:
+                break
+            n, index = task
+            result = factorial(n)
+            output_queue.put((index, result))
+        except queue.Empty:
+            continue
+
+
+def calculate_factorials_with_queues(numbers):
+    num_processes = multiprocessing.cpu_count()
+
+    # Создаем очереди
+    input_queue = multiprocessing.Queue()
+    output_queue = multiprocessing.Queue()
+
+    processes = []
+    for _ in range(num_processes):
+        p = multiprocessing.Process(target=worker, args=(input_queue, output_queue))
+        p.start()
+        processes.append(p)
+
+    for i, n in enumerate(numbers):
+        input_queue.put((n, i))
+
+    for _ in range(num_processes):
+        input_queue.put(None)
+
+    results = [None] * len(numbers)
+    results_received = 0
+
+    while results_received < len(numbers):
+        try:
+            index, result = output_queue.get(timeout=5)
+            results[index] = result
+            results_received += 1
+        except queue.Empty:
+            print("Таймаут при получении результатов")
+            break
+
+    for p in processes:
+        p.join(timeout=1)
+        if p.is_alive():
+            p.terminate()
+
     return results
 
 if __name__ == "__main__":
-
     numbers = list(range(1, 1001))
 
+    # Многопроцессорный подход с очередями
     start_time = time.time()
-    factorials_parallel = calculate_factorials_parallel(numbers)
+    factorials_parallel = calculate_factorials_with_queues(numbers)
     parallel_time = time.time() - start_time
 
-    start_time = time.time()
-    factorials_sequential = [factorial(n) for n in numbers]
-    sequential_time = time.time() - start_time
-
-    print(f"Многопроцессорный подход: {parallel_time:.4f} секунд")
-    print(f"Последовательный подход: {sequential_time:.4f} секунд")
-    print(f"Ускорение: {sequential_time / parallel_time:.2f}x")
+    print(f"Многопроцессорный подход (очереди): {parallel_time:.4f} секунд")
 
     for i in range(10):
         print(f"Факториал {numbers[i]} = {factorials_parallel[i]}")
